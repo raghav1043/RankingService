@@ -1,55 +1,79 @@
 package rankingService.model;
 
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Component;
+import rankingService.entities.HotelData;
+import rankingService.entities.RankingRequest;
+import rankingService.entities.UserData;
+import rankingService.repository.ElasticHotelService;
+import rankingService.repository.RedisHotelService;
+
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.List;
+
+@Component
 public class FeaturesAggregator {
-    public String hotelId;
-    public Double fprice;
-    public Double distance;
-    public Double hotelType;
-    public Double place_popularity_score;
-    public Double ratingCount;
-    public Double ratingMean;
-    public Double discount_per;
 
-    public Double hotel_br;
-    public Double hotel_ctr;
-    public Double hotel_dtob;
-    public Double hotel_btod;
+    @Autowired
+    RedisHotelService redisHotelService;
 
-    public Double hotel_placeid_ctr;
-    public Double hotel_placeid_br;
-    public Double hotel_placeid_dtob;
+    @Autowired
+    UserData userData;
 
-    public Double avg_hotel_rr;
-    public Double avg_hotel_br;
-    public Double avg_hotel_ctr;
-    public Double avg_hotel_btod;
+    @Autowired
+    ElasticHotelService elasticHotelService;
 
-    public Double abp_price_diff;
-    public Double recom_score;
-    public Double vicinity;
+    private String hotelId;
+    private Double fprice;
+    private Double distance;
+    private Double hotelType;
+    private Double place_popularity_score;
+    private Double ratingCount;
+    private Double ratingMean;
+    private Double discount_per;
+
+    private Double hotel_br;
+    private Double hotel_ctr;
+    private Double hotel_dtob;
+    private Double hotel_btod;
+
+    private Double hotel_placeid_ctr;
+    private Double hotel_placeid_br;
+    private Double hotel_placeid_dtob;
+
+    private Double avg_hotel_rr;
+    private Double avg_hotel_br;
+    private Double avg_hotel_ctr;
+    private Double avg_hotel_btod;
+
+    private Double abp_price_diff;
+    private Double recom_score;
+    private Double vicinity;
 
     //request dependent features
-    public Double is_nearby_search;
-    public Double is_locality_search;
-    public Double is_city_search;
+    private Double is_nearby_search;
+    private Double is_locality_search;
+    private Double is_city_search;
 
     //user dependent features
-    public Double hotel_user_br;
-    public Double hotel_user_ctr ;
-    public Double hotel_user_btod;
+    private Double hotel_user_br;
+    private Double hotel_user_ctr ;
+    private Double hotel_user_btod;
 
-    public Double user_cat_ctr;
-    public Double user_cat_br;
-    public Double user_cat_dtob ;
+    private Double user_cat_ctr;
+    private Double user_cat_br;
+    private Double user_cat_dtob ;
 
-    public Double avg_user_rr ;
-    public Double user_abp ;
-    public Double stayLength ;
-    public Double is_weekend_checkin;
-    public Double day_of_week_checkin;
-    public Double is_weekend_searchDate;
-    public Double day_of_week_searchDate;
-    public Double advPurchaseWindow ;
+    private Double avg_user_rr ;
+    private Double user_abp ;
+    private Double stayLength ;
+    private Double is_weekend_checkin;
+    private Double day_of_week_checkin;
+    private Double is_weekend_searchDate;
+    private Double day_of_week_searchDate;
+    private Double advPurchaseWindow ;
 
     public FeaturesAggregator(){}
 
@@ -194,4 +218,76 @@ public class FeaturesAggregator {
                 '}';
     }
 
+    public HashMap<String, List<Double>> getHotelDetails(RankingRequest request) {
+        String experimentId = request.getExperimentId();
+
+        // selected features list based on experimentId
+        List<String> selectedFeatures = ExperimentDecider.getSelectedFeatures(experimentId);
+
+        // request dataset for flask application
+        HashMap<String, List<Double>> hotelDetails = new HashMap<>();
+
+        //fetch all data from redis
+        Iterable<HotelData> result = redisHotelService.mgetHotels(request.getHotels());
+        Iterator<HotelData> iter = result.iterator();
+        while (iter.hasNext()) {
+
+            //fetch hotel properties from redis
+            HotelData hotelData = iter.next();
+
+            //construct datatset for given hotel
+            FeaturesAggregator featuresAggregator = new FeaturesAggregator(hotelData.getHotelId(), hotelData.getFprice(), hotelData.getDistance(), hotelData.getHotelType(), hotelData.getPlace_popularity_score(), hotelData.getRatingCount(), hotelData.getRatingMean(), hotelData.getDiscount_per(), hotelData.getHotel_br(), hotelData.getHotel_ctr(), hotelData.getHotel_dtob(), hotelData.getHotel_btod(), hotelData.getHotel_placeid_ctr(),
+                    hotelData.getHotel_placeid_br(), hotelData.getHotel_placeid_dtob(), hotelData.getAvg_hotel_rr(), hotelData.getAvg_hotel_br(), hotelData.getAvg_hotel_ctr(), hotelData.getAvg_hotel_btod(), hotelData.getAbp_price_diff(), hotelData.getRecom_score(),
+                    (double) request.getIs_nearby_search(), (double) request.getIs_locality_search(), (double) request.getIs_city_search(), hotelData.getVicinity(),
+                    userData.getHotel_user_br(), userData.getHotel_user_ctr(), userData.getHotel_user_btod(), userData.getUser_cat_br(), userData.getUser_cat_ctr(), userData.getUser_cat_dtob(), userData.getAvg_user_rr(), userData.getUser_abp(), userData.getStayLength(), userData.getIs_weekend_checkin(), userData.getDay_of_week_checkin(), userData.getIs_weekend_searchDate(), userData.getDay_of_week_searchDate(), userData.getAdvPurchaseWindow()
+            );
+
+            // add selected features value to list
+            List<Double> selectedFeaturesValues = new ArrayList<>();
+            for (int j = 0; j < selectedFeatures.size(); j++) {
+                selectedFeaturesValues.add(featuresAggregator.getValue(selectedFeatures.get(j)));
+            }
+            hotelDetails.put(hotelData.getHotelId(), selectedFeaturesValues);
+        }
+
+        //------------------------------collect data from elastic search ---------------------------------------------------------------
+
+        if (hotelDetails.size() != request.getHotels().size()) {
+            //list of hotels not present in redis
+            List<String> remainingHotels = new ArrayList<>();
+            for (int i = 0; i < request.getHotels().size(); i++) {
+                if (!hotelDetails.containsKey(request.getHotels().get(i))) {
+                    remainingHotels.add(request.getHotels().get(i));
+                }
+            }
+
+            //System.out.println("remaining Hotels");
+            //System.out.println(remainingHotels);
+
+            //fetch remaining hotels from elastic search
+            List<HotelData> hotelResponse = elasticHotelService.mgetHotelsEs(remainingHotels);
+
+            //System.out.println(hotelResponse);
+
+            for (int i = 0; i < hotelResponse.size(); i++) {
+                //fetch hotel properties from elastic search response
+                HotelData hotelData = hotelResponse.get(i);
+
+                //construct datatset for given hotel
+                FeaturesAggregator featuresAggregator = new FeaturesAggregator(hotelData.getHotelId(), hotelData.getFprice(), hotelData.getDistance(), hotelData.getHotelType(), hotelData.getPlace_popularity_score(), hotelData.getRatingCount(), hotelData.getRatingMean(), hotelData.getDiscount_per(), hotelData.getHotel_br(), hotelData.getHotel_ctr(), hotelData.getHotel_dtob(), hotelData.getHotel_btod(), hotelData.getHotel_placeid_ctr(),
+                        hotelData.getHotel_placeid_br(), hotelData.getHotel_placeid_dtob(), hotelData.getAvg_hotel_rr(), hotelData.getAvg_hotel_br(), hotelData.getAvg_hotel_ctr(), hotelData.getAvg_hotel_btod(), hotelData.getAbp_price_diff(), hotelData.getRecom_score(),
+                        (double) request.getIs_nearby_search(), (double) request.getIs_locality_search(), (double) request.getIs_city_search(), hotelData.getVicinity(),
+                        userData.getHotel_user_br(), userData.getHotel_user_ctr(), userData.getHotel_user_btod(), userData.getUser_cat_br(), userData.getUser_cat_ctr(), userData.getUser_cat_dtob(), userData.getAvg_user_rr(), userData.getUser_abp(), userData.getStayLength(), userData.getIs_weekend_checkin(), userData.getDay_of_week_checkin(), userData.getIs_weekend_searchDate(), userData.getDay_of_week_searchDate(), userData.getAdvPurchaseWindow()
+                );
+
+                // add selected features value to list
+                List<Double> selectedFeaturesValues = new ArrayList<>();
+                for (int j = 0; j < selectedFeatures.size(); j++) {
+                    selectedFeaturesValues.add(featuresAggregator.getValue(selectedFeatures.get(j)));
+                }
+                hotelDetails.put(hotelData.getHotelId(), selectedFeaturesValues);
+            }
+        }
+        return hotelDetails;
+    }
 }

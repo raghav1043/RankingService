@@ -9,7 +9,7 @@ import io.searchbox.indices.CreateIndex;
 import io.searchbox.indices.IndicesExists;
 import org.springframework.web.bind.annotation.*;
 import rankingService.config.ElasticConfig;
-import rankingService.model.HotelData;
+import rankingService.entities.HotelData;
 
 import java.io.IOException;
 

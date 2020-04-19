@@ -2,7 +2,7 @@ package rankingService.repository;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
-import rankingService.model.HotelData;
+import rankingService.entities.HotelData;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -14,9 +14,13 @@ public class RedisHotelService {
     HotelRepository hotelRepository;
 
     public void saveHotel(HotelData hotel){
-        if(!exists(hotel.hotelId)){
+        if(!exists(hotel.getHotelId())){
             hotelRepository.save(hotel);
         }
+    }
+
+    public void saveAll(List<HotelData> hotelDataList){
+        hotelRepository.save(hotelDataList);
     }
 
     public boolean exists(String id){

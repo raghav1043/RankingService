@@ -2,8 +2,8 @@ package rankingService.controller;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
-import rankingService.model.RankingHelper;
-import rankingService.request.RankingRequest;
+import rankingService.model.RankingModel;
+import rankingService.entities.RankingRequest;
 
 import java.util.List;
 
@@ -11,14 +11,14 @@ import java.util.List;
 public class RankingController {
 
     @Autowired
-    RankingHelper rankingHelper ;
+    RankingModel rankingModel;
 
     @RequestMapping(
             value = "/ranking",
             method = RequestMethod.POST)
     @ResponseBody
     public List<String> returnResponse(@RequestBody RankingRequest request){
-        List<String> selectedFeatures = rankingHelper.getSortedHotels(request);
+        List<String> selectedFeatures = rankingModel.getSortedHotels(request);
         return selectedFeatures;
     }
 

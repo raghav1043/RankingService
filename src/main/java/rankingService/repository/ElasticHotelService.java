@@ -9,7 +9,7 @@ import org.elasticsearch.index.query.QueryBuilders;
 import org.elasticsearch.search.builder.SearchSourceBuilder;
 import org.springframework.stereotype.Component;
 import rankingService.config.ElasticConfig;
-import rankingService.model.HotelData;
+import rankingService.entities.HotelData;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -19,23 +19,29 @@ import java.util.stream.Collectors;
 @Component
 public class ElasticHotelService {
 
-    public List<HotelData> getAllHotels() throws IOException {
-        ElasticConfig elasticConfig = new ElasticConfig();
-        JestClient client = elasticConfig.jestClient();
-
+    public List<HotelData> getAllHotels() {
         SearchSourceBuilder searchSourceBuilder = new SearchSourceBuilder();
         searchSourceBuilder.query(QueryBuilders.matchAllQuery());
-        searchSourceBuilder.size(10000);
+        searchSourceBuilder.size(1000);
         Search search = new Search.Builder(searchSourceBuilder.toString())
                 .addIndex("hotelsinfo")
                 .build();
-        SearchResult searchResult = client.execute(search);
-        List<SearchResult.Hit<HotelData, Void>> searchHits = searchResult.getHits(HotelData.class);
-        List<HotelData> results = searchHits.stream()
-                .map(h -> h.source)
-                .collect(Collectors.toList());
-        client.close();
+
+        List<HotelData> results = new ArrayList<>();
+        try {
+            ElasticConfig elasticConfig = new ElasticConfig();
+            JestClient client = elasticConfig.jestClient();
+            SearchResult searchResult = client.execute(search);
+            List<SearchResult.Hit<HotelData, Void>> searchHits = searchResult.getHits(HotelData.class);
+            results = searchHits.stream()
+                    .map(h -> h.source)
+                    .collect(Collectors.toList());
+            client.close();
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
         return results;
+
     }
 
 
@@ -54,23 +60,21 @@ public class ElasticHotelService {
     }
 
     public List<HotelData> mgetHotelsEs(List<String> list){
-        String queryDSL = "{"+
+        String query = "{"+
                 " \"query\":{"+
                 " \"terms\":"+
                 "{ \"hotelId\": [";
         for(String x:list){
-            queryDSL = queryDSL+"\""+x+"\",";
+            query = query+"\""+x+"\",";
         }
-        queryDSL = queryDSL.substring(0,queryDSL.length()-1);
-        queryDSL=queryDSL+"]}}}";
-
-        System.out.println(queryDSL);
+        query = query.substring(0,query.length()-1);
+        query=query+"]}}}";
 
         ElasticConfig elasticConfig = new ElasticConfig();
         JestClient client = elasticConfig.jestClient();
         List<HotelData> response = new ArrayList<>();
         try {
-            JestResult result = client.execute(new Search.Builder(queryDSL).build());
+            JestResult result = client.execute(new Search.Builder(query).build());
             response = result.getSourceAsObjectList(HotelData.class);
         } catch (IOException e) {
             e.printStackTrace();
